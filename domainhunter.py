@@ -4,7 +4,7 @@
 ## Author:      @joevest and @andrewchiles
 ## Description: Checks expired domains, reputation/categorization, and Archive.org history to determine
 ##              good candidates for phishing and C2 domain names
-## Updated: Added McAfee Web Gateway (Cloud) reputation checking + Fixed Bluecoat + CISCO Talos @froyo75
+## Updated: Added Trellix (McAfee) Web Gateway (Cloud) reputation checking + Fixed Bluecoat + CISCO Talos @froyo75
 # If the expected response format from a provider changes, use the traceback module to get a full stack trace without removing try/catch blocks
 #import traceback
 #traceback.print_exc()
@@ -43,7 +43,7 @@ def getCISCOTalosInfos(domain):
     options.add_argument(f'--disable-gpu')
     options.add_argument(f'--no-sandbox')
     options.add_argument(f'--disable-dev-shm-usage')
-    driver = uc.Chrome(options=options,headless=False,executable_path='/usr/bin/chromedriver')
+    driver = uc.Chrome(options=options,headless=False,executable_path='/usr/bin/chromedriver',version_main=100)
     print("[*] Retrieving infos from Cisco Talos...")
     jitter = 5
     with driver:
@@ -231,10 +231,10 @@ def checkBluecoat(domain):
         return "error"
 
 def checkMcAfeeWG(domain):
-    """McAfee Web Gateway Domain Reputation"""
+    """Trellix Web Gateway Domain Reputation"""
    
     try:
-        print('[*] McAfee Web Gateway (Cloud): {}'.format(domain))
+        print('[*] Trellix (McAfee) Web Gateway (Cloud): {}'.format(domain))
 
         # HTTP Session container, used to manage cookies, session tokens and other session information
         s = requests.Session()
@@ -244,11 +244,11 @@ def checkMcAfeeWG(domain):
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5',
                 'Accept-Encoding': 'gzip, deflate',
-                'Referer':'https://sitelookup.mcafee.com/'
+                'Referer':'https://trustedsource.org/'
                 }  
 
         # Establish our session information
-        response = s.get("https://sitelookup.mcafee.com",headers=headers,verify=False,proxies=proxies)
+        response = s.get("https://trustedsource.org",headers=headers,verify=False,proxies=proxies)
         
         # Pull the hidden attributes from the response
         soup = BeautifulSoup(response.text,"html.parser")
@@ -274,7 +274,7 @@ def checkMcAfeeWG(domain):
             'url': (None, domain)
         }
 
-        response = s.post('https://sitelookup.mcafee.com/en/feedback/url',headers=headers,files=multipart_form_data,verify=False,proxies=proxies)
+        response = s.post('https://trustedsource.org/en/feedback/url',headers=headers,files=multipart_form_data,verify=False,proxies=proxies)
         if response.status_code == 200:
             soup = BeautifulSoup(response.text,"html.parser")
             for table in soup.findAll("table", {"class": ["result-table"]}):
@@ -291,7 +291,7 @@ def checkMcAfeeWG(domain):
             raise Exception
 
     except Exception as e:
-        print('[-] Error retrieving McAfee Web Gateway Domain Reputation!')
+        print('[-] Error retrieving Trellix (McAfee) Web Gateway Domain Reputation!')
         return "error"
 
 def checkIBMXForce(domain):
@@ -519,7 +519,7 @@ def loginExpiredDomains():
 
     data = "login=%s&password=%s&redirect_2_url=/" % (username, password)
     headers["Content-Type"] = "application/x-www-form-urlencoded"
-    r = s.post(expireddomainHost + "/login/", headers=headers, data=data, proxies=proxies, verify=False, allow_redirects=False)
+    r = s.post(expireddomainHost + "/login/", headers=headers, data=data, proxies=None, verify=False, allow_redirects=False)
     cookies = s.cookies.get_dict()
 
     if "location" in r.headers:
@@ -672,7 +672,7 @@ Examples:
         print(title)
         print('''\nExpired Domains Reputation Checker
 Authors: @joevest and @andrewchiles
-Updated by: @froyo75 (Added McAfee Web Gateway (Cloud) reputation checking & Fixed Bluecoat + CISCO TALOS)\n
+Updated by: @froyo75 (Added Trellix (McAfee) Web Gateway (Cloud) reputation checking & Fixed Bluecoat + CISCO TALOS)\n
 DISCLAIMER: This is for educational purposes only!
 It is designed to promote education and the improvement of computer/cyber security.  
 The authors or employers are not liable for any illegal act or misuse performed by any user of this tool.
@@ -700,7 +700,7 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
                     doSleep(timing)
 
                 # Print results table
-                header = ['Domain', 'BlueCoat', 'IBM X-Force', 'McAfee Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella', 'MXToolbox']
+                header = ['Domain', 'BlueCoat', 'IBM X-Force', 'Trellix (McAfee) Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella', 'MXToolbox']
                 print(drawTable(header,data))
 
         except KeyboardInterrupt:
@@ -860,7 +860,7 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
                 
                 mcafeewg = checkMcAfeeWG(domain)
                 if mcafeewg not in unwantedResults:
-                    print("[+] McAfee Web Gateway (Cloud) {}: {}".format(domain, mcafeewg))
+                    print("[+] Trellix (McAfee) Web Gateway (Cloud) {}: {}".format(domain, mcafeewg))
 
                 ciscotalos = checkTalos(domain)
                 if ciscotalos not in unwantedResults:
@@ -905,7 +905,7 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
                     <th>Status</th>
                     <th>BlueCoat</th>
                     <th>IBM X-Force</th>
-                    <th>McAfee Web Gateway (Cloud)<th>
+                    <th>Trellix (McAfee) Web Gateway (Cloud)<th>
                     <th>Cisco Talos</th>
                     <th>Umbrella</th>
                     <th>WatchGuard</th>
@@ -928,7 +928,7 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
 
         htmlTableBody += '<td><a href="https://sitereview.bluecoat.com/" target="_blank">{}</a></td>'.format(i[5]) # Bluecoat
         htmlTableBody += '<td><a href="https://exchange.xforce.ibmcloud.com/url/{}" target="_blank">{}</a></td>'.format(i[0],i[6]) # IBM x-Force Categorization
-        htmlTableBody += '<td><a href="https://sitelookup.mcafee.com/en/feedback/url?action=checksingle&url=http%3A%2F%2F{}&product=14-ts" target="_blank">{}</a></td>'.format(i[0],i[7]) # McAfee Web Gateway (Cloud)
+        htmlTableBody += '<td><a href="https://trustedsource.org/en/feedback/url?action=checksingle&url=http%3A%2F%2F{}&product=14-ts" target="_blank">{}</a></td>'.format(i[0],i[7]) # Trellix (McAfee) Web Gateway (Cloud)
         htmlTableBody += '<td><a href="https://www.talosintelligence.com/reputation_center/lookup?search={}" target="_blank">{}</a></td>'.format(i[0],i[8]) # Cisco Talos
         htmlTableBody += '<td>{}</td>'.format(i[9]) # Cisco Umbrella
         htmlTableBody += '<td><a href="http://www.borderware.com/domain_lookup.php?ip={}" target="_blank">WatchGuard</a></td>'.format(i[0]) # Borderware WatchGuard
@@ -950,5 +950,5 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
     print("[*] Log written to {}\n".format(logfilename))
     
     # Print Text Table
-    header = ['Domain', 'Birth', '#', 'TLDs', 'Status', 'BlueCoat', 'IBM', 'McAfee Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella']
+    header = ['Domain', 'Birth', '#', 'TLDs', 'Status', 'BlueCoat', 'IBM', 'Trellix (McAfee) Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella']
     print(drawTable(header,sortedDomains))

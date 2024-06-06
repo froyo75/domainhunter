@@ -2,7 +2,7 @@
 
 ## The following updates have been implemented from the latest current version of [domainhunter](https://github.com/threatexpress/domainhunter)
 
-* Add McAfee Web Gateway (Cloud) reputation checking
+* Add Trellix (McAfee) Web Gateway (Cloud) reputation checking
 * Fix Bluecoat caused by service updates
 * Fix CISCO Talos to bypass bot mitigation systems (like Distil / Imperva/ Datadadome / CloudFlare IUAM)
 * Add a delay (in seconds) parameter to bypass DDoS antibot system (Distil / Imperva/ Datadadome / CloudFlare IUAM)
@@ -10,13 +10,13 @@
 ## Whenever you encounter the error:
 
 ```
-from session not created: This version of ChromeDriver only supports Chrome version 98
+from session not created: This version of ChromeDriver only supports Chrome version 100
 ```
 
-Download  the `ChromeDriver`(version 98) from [ChromeDriver](https://chromedriver.chromium.org/) (to use the [undetected_chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)  Python module):
+Download  the `ChromeDriver`(version 100) from [ChromeDriver](https://chromedriver.chromium.org/) (to use the [undetected_chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)  Python module):
 
 ```shell
-wget https://chromedriver.storage.googleapis.com/98.0.4758.80/chromedriver_linux64.zip
+wget https://chromedriver.storage.googleapis.com/100.0.4896.60/chromedriver_linux64.zip
 7z x chromedriver_linux64.zip -o/usr/bin/
 ```
 
