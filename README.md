@@ -13,11 +13,17 @@
 from session not created: This version of ChromeDriver only supports Chrome version 100
 ```
 
-Download  the `ChromeDriver`(version 100) from [ChromeDriver](https://chromedriver.chromium.org/) (to use the [undetected_chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)  Python module):
+Download the `ChromeDriver`(version 100) from [ChromeDriver](https://chromedriver.chromium.org/) (to use the [undetected_chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)  Python module):
 
 ```shell
 wget https://chromedriver.storage.googleapis.com/100.0.4896.60/chromedriver_linux64.zip
 7z x chromedriver_linux64.zip -o/usr/bin/
+```
+
+Download and install the compatible version of Google Chrome:
+```shell
+wget https://mirror.cs.uchicago.edu/google-chrome/pool/main/g/google-chrome-stable/google-chrome-stable_100.0.4896.60-1_amd64.deb
+dpkg -i google-chrome-stable_100.0.4896.60-1_amd64.deb
 ```
 
 # Introduction
