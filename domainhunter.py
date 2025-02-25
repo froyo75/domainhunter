@@ -4,7 +4,7 @@
 ## Author:      @joevest and @andrewchiles
 ## Description: Checks expired domains, reputation/categorization, and Archive.org history to determine
 ##              good candidates for phishing and C2 domain names
-## Updated: Added Trellix (McAfee) Web Gateway (Cloud) reputation checking + Fixed Bluecoat + CISCO Talos @froyo75
+## Updated: Updated Trellix (McAfee) Web Gateway (Cloud) reputation checking + Fixed Bluecoat + CISCO Talos: @froyo75
 # If the expected response format from a provider changes, use the traceback module to get a full stack trace without removing try/catch blocks
 #import traceback
 #traceback.print_exc()
@@ -19,12 +19,12 @@ import sys
 from urllib.parse import urlparse
 import getpass
 
-####FIX BLUECOAT######################
-from hashlib import sha256
-####FIX CISCO TALOS###################
-from xvfbwrapper import Xvfb
-import undetected_chromedriver as uc
-import time
+####FIX CISCO TALOS+BLUECOAT######################
+import re
+import html
+from bs4 import BeautifulSoup
+from seleniumbase import SB
+jitter = 1
 ######################################
 
 __version__ = "20210108"
@@ -32,55 +32,62 @@ __version__ = "20210108"
 ## Functions
 
 ####FIX CISCO TALOS###################################################################################################################################################
-def getCISCOTalosInfos(domain):
-    """Retrieve CISCO Talos Infos using an optimized selenium chromedriver patch with 'undetected_chromedriver' module
-        To bypass bot mitigation systems (like Distil / Imperva/ Datadadome / CloudFlare IUAM)"""
-    url = "https://talosintelligence.com/reputation_center/lookup?search={0}".format(domain)
-    vdisplay = Xvfb(width=800, height=1280)
-    vdisplay.start()
-    options = uc.ChromeOptions()
-    options.add_argument(f'--no-first-run --no-service-autorun --password-store=basic')
-    options.add_argument(f'--disable-gpu')
-    options.add_argument(f'--no-sandbox')
-    options.add_argument(f'--disable-dev-shm-usage')
-    driver = uc.Chrome(options=options,headless=False,executable_path='/usr/bin/chromedriver',version_main=100)
-    print("[*] Retrieving infos from Cisco Talos...")
-    jitter = 5
-    with driver:
-        driver.get(url)
-        time.sleep(random.randrange(delay,delay+jitter))
-        response = driver.page_source
-    driver.quit()
-    vdisplay.stop()
+def checkTalos(domain):
+    """Retrieve CISCO Talos Infos using SeleniumBase"""
+    with SB(uc=True, headed=True, xvfb=False, incognito=True, ad_block=True, browser='chrome', locale_code="en") as sb:
+        try:
+            url = f"https://talosintelligence.com/reputation_center/lookup?search={domain}"
+            print("[*] Retrieving infos from Cisco Talos...")
+            
+            timeout = random.randrange(delay, delay + jitter)
+            # Open URL
+            sb.activate_cdp_mode(url)
+            sb.sleep(timeout)
+            
+            # Get page content
+            response = sb.get_page_source()
+            
+            # Check for Cloudflare protection
+            if "DDoS protection by" in response:
+                print("\n[-] Error retrieving Talos reputation! => DDoS protection by Cloudflare "
+                      "(Please try to increase the delay to bypass the bot mitigation system!)")
+                return "error"
 
-    if "DDoS protection by" in response:
-        print("\n[-] Error retrieving Talos reputation! => DDoS protection by Cloudflare (Please try to increase the delay to bypass the bot mitigation system!)")
-        return "error"
+            # Initialize default values
+            web_reputation = "Unknown"
+            email_reputation = "Unknown"
+            added_blocklist = "Unknown"
+            category = "Uncategorized"
 
-    web_reputation = "Unknown"
-    email_reputation = "Unknown"
-    added_blocklist = "Unknown"
-    category = "Uncategorized"
-    soup = BeautifulSoup(response,"html.parser")
-    for span in soup.findAll("span", {"class": ["email-rep-label details-rep--", "new-legacy-label", "tl-bl"]}):
-        class_names = span['class']
-        if "email-rep-label" in class_names and span.text != '-':
-            email_reputation = span.text
-        if "new-legacy-label" in class_names:
-            web_reputation = span.text
-        if "tl-bl" in class_names:
-            added_blocklist = span.text
+            # Parse the response
+            soup = BeautifulSoup(response, "html.parser")
+            
+            # Find reputation and blocklist information
+            for span in soup.findAll("span", {"class": ["email-rep-label details-rep--", "new-legacy-label", "tl-bl"]}):
+                class_names = span['class']
+                if "email-rep-label" in class_names and span.text != '-':
+                    email_reputation = span.text
+                if "new-legacy-label" in class_names:
+                    web_reputation = span.text
+                if "tl-bl" in class_names:
+                    added_blocklist = span.text
 
-    for td in soup.findAll("td", {"class": ["content-category"]}):
-        class_names = td['class']
+            # Find category information
+            category_elem = soup.find("td", {"class": "content-category"})
+            if category_elem:
+                category = category_elem.text
 
-    if "content-category" in class_names:
-        category = td.text
+            if category == "Uncategorized":
+                result = "Uncategorized"
+            else:
+                result = (f'{category.strip()}, Email Reputation: {email_reputation} / '
+                       f'Web Reputation: {web_reputation} / '
+                       f'Added to block list: {added_blocklist}')
+            return result
 
-    if category == "Uncategorized":
-        return "Uncategorized"
-    else:
-        return '{0}, Email Reputation: {1} / Web Reputation: {2} / Added to block list: {3}'.format(category,email_reputation,web_reputation,added_blocklist)
+        except Exception as e:
+            print(f"[-] Error retrieving Talos information: {str(e)}")
+            return "error"
 ###############################################################################################################################################################################
 
 def doSleep(timing):
@@ -124,111 +131,56 @@ def checkUmbrella(domain):
         print('[-] Error retrieving Umbrella reputation! {0}'.format(e))
         return "error"
 
+####FIX BLUECOAT###################################################################################################################################################
 def checkBluecoat(domain):
-    """Symantec Sitereview Domain Reputation"""
+    """Retrieve Symantec Bluecoat info using SeleniumBase"""
+    with SB(uc=True, headed=True, xvfb=False, incognito=True, ad_block=True, browser='chrome', locale_code="en") as sb:
+        try:
+            url = "https://sitereview.bluecoat.com/#/lookup-result/" + domain
+            print("[*] Checking Bluecoat for:", domain)
+            
+            timeout = random.randrange(delay, delay + jitter)
+            # Open URL and Handle Turnstile
+            sb.activate_cdp_mode(url)
+            sb.sleep(timeout)
+            sb.uc_gui_click_captcha("ngx-turnstile")
+            sb.sleep(timeout)
 
-    try:
-        headers = {
-            'User-Agent':useragent,
-            'Referer':'http://sitereview.bluecoat.com/'}
+            # Get page content
+            content = sb.get_page_source()
+            if not content:
+                return "[-] Failed to get content"
 
-        # Establish our session information
-        response = s.get("https://sitereview.bluecoat.com/",headers=headers,verify=False,proxies=proxies)
-        response = s.head("https://sitereview.bluecoat.com/resource/captcha-request",headers=headers,verify=False,proxies=proxies)
-        
-        # Pull the XSRF Token from the cookie jar
-        session_cookies = s.cookies.get_dict()
-        if "XSRF-TOKEN" in session_cookies:
-            token = session_cookies["XSRF-TOKEN"]
-        else:
-            raise NameError("No XSRF-TOKEN found in the cookie jar")
- 
-        # Perform SiteReview lookup
-        
-        # BlueCoat Added base64 encoded phrases selected at random and sha256 hashing of the JSESSIONID
-        phrases = [
-            'UGxlYXNlIGRvbid0IGZvcmNlIHVzIHRvIHRha2UgbWVhc3VyZXMgdGhhdCB3aWxsIG1ha2UgaXQgbW9yZSBkaWZmaWN1bHQgZm9yIGxlZ2l0aW1hdGUgdXNlcnMgdG8gbGV2ZXJhZ2UgdGhpcyBzZXJ2aWNlLg==',
-            'SWYgeW91IGNhbiByZWFkIHRoaXMsIHlvdSBhcmUgbGlrZWx5IGFib3V0IHRvIGRvIHNvbWV0aGluZyB0aGF0IGlzIGFnYWluc3Qgb3VyIFRlcm1zIG9mIFNlcnZpY2U=',
-            'RXZlbiBpZiB5b3UgYXJlIG5vdCBwYXJ0IG9mIGEgY29tbWVyY2lhbCBvcmdhbml6YXRpb24sIHNjcmlwdGluZyBhZ2FpbnN0IFNpdGUgUmV2aWV3IGlzIHN0aWxsIGFnYWluc3QgdGhlIFRlcm1zIG9mIFNlcnZpY2U=',
-            'U2NyaXB0aW5nIGFnYWluc3QgU2l0ZSBSZXZpZXcgaXMgYWdhaW5zdCB0aGUgU2l0ZSBSZXZpZXcgVGVybXMgb2YgU2VydmljZQ=='
-        ]
-        
-        ####FIX BLUECOAT###################################################################################################################
-        def get_xsrf_random_part(xsrf_token_parts):
-          return random.choice(xsrf_token_parts)
+            # Extract category using regex
+            category_pattern = r'<span class="clickable-category">(.*?)</span>'
+            matches = re.findall(category_pattern, content)
+            
+            # Extract rating date
+            date_pattern = r'Last Time Rated/Reviewed: ([^<]+)'
+            date_matches = re.findall(date_pattern, content)
+            
+            category = "Uncategorized"
+            rating_date = "Unknown"
+            
+            if matches:
+                category = matches[0].strip()
+                print(f"[+] Found category: {category}")
+                
+                # Check if it's a high-profile URL
+                if 'high-profile URL' in content and 'cannot be changed via Site Review' in content:
+                    category += " (High Profile)"
+            if date_matches:
+                # Decode HTML entities and clean up the date string
+                rating_date = html.unescape(date_matches[0].strip())
+                print(f"[+] Last rated: {rating_date}")
+                
+            # Combine category and date
+            result = f"{category} (Last rated: {rating_date})"
+            return result
 
-        xsrf_token_parts = token.split('-')
-        xsrf_random_part = get_xsrf_random_part(xsrf_token_parts)
-        key_data = xsrf_random_part + ': ' + token
-        key = sha256(key_data.encode('utf-8')).hexdigest()
-        random_phrase = base64.b64decode(random.choice(phrases)).decode('utf-8')
-        phrase_data = xsrf_random_part + ': ' + random_phrase
-        phrase = sha256(phrase_data.encode('utf-8')).hexdigest()
-        ####################################################################################################################################
-
-        postData = {
-            'url':domain,
-            'captcha':'',
-            'key':key,
-            'phrase':phrase, # Pick a random base64 phrase from the list
-            'source':'new-lookup'}
-
-        headers = {'User-Agent':useragent,
-                   'Accept':'application/json, text/plain, */*',
-                   'Accept-Language':'en_US',
-                   'Content-Type':'application/json; charset=UTF-8',
-                   'X-XSRF-TOKEN':token,
-                   'Referer':'http://sitereview.bluecoat.com/'}
-
-        print('[*] BlueCoat: {}'.format(domain))
-        response = s.post('https://sitereview.bluecoat.com/resource/lookup',headers=headers,json=postData,verify=False,proxies=proxies)
-        
-        # Check for any HTTP errors
-        if response.status_code != 200:
-            a = "HTTP Error ({}-{}) - Is your IP blocked?".format(response.status_code,response.reason)
-        else:
-            responseJSON = json.loads(response.text)
-        
-            if 'errorType' in responseJSON:
-                a = responseJSON['errorType']
-            else:
-                a = responseJSON['categorization'][0]['name']
-        
-            # Print notice if CAPTCHAs are blocking accurate results and attempt to solve if --ocr
-            if a == 'captcha':
-                if ocr:
-                    # This request is also performed by a browser, but is not needed for our purposes
-                    #captcharequestURL = 'https://sitereview.bluecoat.com/resource/captcha-request'
-
-                    print('[*] Received CAPTCHA challenge!')
-                    captcha = solveCaptcha('https://sitereview.bluecoat.com/resource/captcha.jpg',s)
-                    
-                    if captcha:
-                        b64captcha = base64.urlsafe_b64encode(captcha.encode('utf-8')).decode('utf-8')
-                    
-                        # Send CAPTCHA solution via GET since inclusion with the domain categorization request doesn't work anymore
-                        captchasolutionURL = 'https://sitereview.bluecoat.com/resource/captcha-request/{0}'.format(b64captcha)
-                        print('[*] Submiting CAPTCHA at {0}'.format(captchasolutionURL))
-                        response = s.get(url=captchasolutionURL,headers=headers,verify=False,proxies=proxies)
-
-                        # Try the categorization request again
-                        response = s.post(url,headers=headers,json=postData,verify=False,proxies=proxies)
-
-                        responseJSON = json.loads(response.text)
-
-                        if 'errorType' in responseJSON:
-                            a = responseJSON['errorType']
-                        else:
-                            a = responseJSON['categorization'][0]['name']
-                    else:
-                        print('[-] Error: Failed to solve BlueCoat CAPTCHA with OCR! Manually solve at "https://sitereview.bluecoat.com/sitereview.jsp"')
-                else:
-                    print('[-] Error: BlueCoat CAPTCHA received. Try --ocr flag or manually solve a CAPTCHA at "https://sitereview.bluecoat.com/sitereview.jsp"')
-        return a
-
-    except Exception as e:
-        print('[-] Error retrieving Bluecoat reputation! {0}'.format(e))
-        return "error"
+        except Exception as e:
+            return f"[-] Bluecoat error: {str(e)}"  
+###############################################################################################################################################################################
 
 def checkMcAfeeWG(domain):
     """Trellix Web Gateway Domain Reputation"""
@@ -280,13 +232,16 @@ def checkMcAfeeWG(domain):
             for table in soup.findAll("table", {"class": ["result-table"]}):
                 datas = table.find_all('td')
                 if "not valid" in datas[2].text:
-                    a = 'Uncategorized'
+                    result = 'Uncategorized'
                 else:
                     status = datas[2].text
                     category = (datas[3].text[1:]).strip().replace('-',' -')
                     web_reputation = datas[4].text
-                    a = '{0}, Status: {1}, Web Reputation: {2}'.format(category,status,web_reputation)
-            return a
+                    if category:
+                        result = '{0}, Status: {1}, Web Reputation: {2}'.format(category,status,web_reputation)
+                    else:
+                        result = 'Uncategorized'
+            return result
         else:
             raise Exception
 
@@ -313,10 +268,10 @@ def checkIBMXForce(domain):
         responseJSON = json.loads(response.text)
 
         if 'error' in responseJSON:
-            a = responseJSON['error']
+            result = responseJSON['error']
 
         elif not responseJSON['result']['cats']:
-            a = 'Uncategorized'
+            result = 'Uncategorized'
 	
 	## TO-DO - Add noticed when "intrusion" category is returned. This is indication of rate limit / brute-force protection hit on the endpoint        
 
@@ -326,44 +281,14 @@ def checkIBMXForce(domain):
             for key in responseJSON['result']['cats']:
                 categories += '{0}, '.format(str(key))
 
-            a = '{0}(Score: {1})'.format(categories,str(responseJSON['result']['score']))
+            result = '{0}(Score: {1})'.format(categories,str(responseJSON['result']['score']))
 
-        return a
+        return result
 
     except Exception as e:
         print('[-] Error retrieving IBM-Xforce reputation! {0}'.format(e))
         return "error"
 
-def checkTalos(domain):
-    """Cisco Talos Domain Reputation"""
-
-    #url = 'https://www.talosintelligence.com/sb_api/query_lookup?query=%2Fapi%2Fv2%2Fdetails%2Fdomain%2F&query_entry={0}&offset=0&order=ip+asc'.format(domain)
-    #headers = {'User-Agent':useragent,
-    #           'Referer':url}
-
-    print('[*] Cisco Talos: {}'.format(domain))
-    try:
-    #    response = s.get(url,headers=headers,verify=False,proxies=proxies)
-    #    responseJSON = json.loads(response.text)
-    #    if 'error' in responseJSON:
-    #        a = str(responseJSON['error'])
-    #        if a == "Unfortunately, we can't find any results for your search.":
-    #            a = 'Uncategorized'
-    #
-    #    elif responseJSON['category'] is None:
-    #        a = 'Uncategorized'
-    #
-    #    else:
-    #        a = '{0} (Score: {1})'.format(str(responseJSON['category']['description']), str(responseJSON['web_score_name']))
-    #
-    #    return a
-    #
-    ####FIX CISCO TALOS###################
-    	return getCISCOTalosInfos(domain)
-    #####################################
-    except Exception as e:
-        print('[-] Error retrieving Talos reputation! {0}'.format(e))
-        return "error"
 
 def checkMXToolbox(domain):
     """ Checks the MXToolbox service for Google SafeBrowsing and PhishTank information. Currently broken"""
@@ -409,17 +334,17 @@ def checkMXToolbox(domain):
 
         soup = BeautifulSoup(response.content,'lxml')
 
-        a = ''
+        result = ''
         if soup.select('div[id=ctl00_ContentPlaceHolder1_noIssuesFound]'):
-            a = 'No issues found'
-            return a
+            result = 'No issues found'
+            return result
         else:
             if soup.select('div[id=ctl00_ContentPlaceHolder1_googleSafeBrowsingIssuesFound]'):
-                a = 'Google SafeBrowsing Issues Found. '
+                result = 'Google SafeBrowsing Issues Found. '
         
             if soup.select('div[id=ctl00_ContentPlaceHolder1_phishTankIssuesFound]'):
-                a += 'PhishTank Issues Found'
-            return a
+                result += 'PhishTank Issues Found'
+            return result
 
     except Exception as e:
         print('[-] Error retrieving Google SafeBrowsing and PhishTank reputation!')
@@ -551,7 +476,7 @@ Examples:
 ./domainhunter.py --check --ocr -t3
 ./domainhunter.py --single mydomain.com
 ./domainhunter.py --keyword tech --check --ocr --timing 5 --alexa
-./domaihunter.py --filename inputlist.txt --ocr --timing 5''',
+./domainhunter.py --filename domains.list --ocr --timing 5''',
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
     parser.add_argument('-a','--alexa', help='Filter results to Alexa listings', required=False, default=0, action='store_const', const=1)
@@ -658,7 +583,7 @@ Examples:
     if(args.proxy != None):
         proxy_parts = urlparse(args.proxy)
         proxies["http"] = "http://%s" % (proxy_parts.netloc)
-        proxies["https"] = "https://%s" % (proxy_parts.netloc)
+        proxies["https"] = "http://%s" % (proxy_parts.netloc)
     s.proxies = proxies
     title = '''
  ____   ___  __  __    _    ___ _   _   _   _ _   _ _   _ _____ _____ ____  
@@ -672,7 +597,7 @@ Examples:
         print(title)
         print('''\nExpired Domains Reputation Checker
 Authors: @joevest and @andrewchiles
-Updated by: @froyo75 (Added Trellix (McAfee) Web Gateway (Cloud) reputation checking & Fixed Bluecoat + CISCO TALOS)\n
+Updated by: @froyo75 (Updated Trellix (McAfee) Web Gateway (Cloud) reputation checking & Fixed Bluecoat + CISCO TALOS)\n
 DISCLAIMER: This is for educational purposes only!
 It is designed to promote education and the improvement of computer/cyber security.  
 The authors or employers are not liable for any illegal act or misuse performed by any user of this tool.
@@ -700,6 +625,7 @@ If you plan to use this content for illegal purpose, don't.  Have a nice day :)\
                     doSleep(timing)
 
                 # Print results table
+                #header = ['Domain', 'BlueCoat', 'IBM X-Force', 'Trellix (McAfee) Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella']
                 header = ['Domain', 'BlueCoat', 'IBM X-Force', 'Trellix (McAfee) Web Gateway (Cloud)', 'Cisco Talos', 'Umbrella', 'MXToolbox']
                 print(drawTable(header,data))
 

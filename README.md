@@ -2,39 +2,31 @@
 
 ## The following updates have been implemented from the latest current version of [domainhunter](https://github.com/threatexpress/domainhunter)
 
-* Add Trellix (McAfee) Web Gateway (Cloud) reputation checking
-* Fix Bluecoat caused by service updates
-* Fix CISCO Talos to bypass bot mitigation systems (like Distil / Imperva/ Datadadome / CloudFlare IUAM)
-* Add a delay (in seconds) parameter to bypass DDoS antibot system (Distil / Imperva/ Datadadome / CloudFlare IUAM)
+* Updated Trellix (McAfee) Web Gateway (Cloud) reputation checking
+* Updated Bluecoat check with SeleniumBase implementation to bypass Cloudflare turnstile
+* Updated CISCO Talos check with SeleniumBase implementation to bypass antibot system
+* Added a delay (in seconds) parameter to bypass DDoS antibot system (Distil / Imperva / Datadadome / CloudFlare IUAM)
 
-## Whenever you encounter the error:
-
-```
-from session not created: This version of ChromeDriver only supports Chrome version 100
-```
-
-Download the `ChromeDriver`(version 100) from [ChromeDriver](https://chromedriver.chromium.org/) (to use the [undetected_chromedriver](https://github.com/ultrafunkamsterdam/undetected-chromedriver)  Python module):
+## Installing Chrome and ChromeDriver using SeleniumBase (Required)
 
 ```shell
-wget https://chromedriver.storage.googleapis.com/100.0.4896.60/chromedriver_linux64.zip
-7z x chromedriver_linux64.zip -o/usr/bin/
-```
-
-Download and install the compatible version of Google Chrome:
-```shell
-wget https://mirror.cs.uchicago.edu/google-chrome/pool/main/g/google-chrome-stable/google-chrome-stable_100.0.4896.60-1_amd64.deb
-dpkg -i google-chrome-stable_100.0.4896.60-1_amd64.deb
+sbase install chrome latest
+sbase install chromedriver latest
 ```
 
 # Introduction
 
-Authors Joe Vest (@joevest) & Andrew Chiles (@andrewchiles)
+Authors Joe Vest (@joevest) & Andrew Chiles (@andrewchiles) & Updated by @froyo75
 
 Domain name selection is an important aspect of preparation for penetration tests and especially Red Team engagements. Commonly, domains that were used previously for benign purposes and were properly categorized can be purchased for only a few dollars. Such domains can allow a team to bypass reputation based web filters and network egress restrictions for phishing and C2 related tasks. 
 
 This Python based tool was written to quickly query the Expireddomains.net search engine for expired/available domains with a previous history of use. It then optionally queries for domain reputation against services like Symantec Site Review (BlueCoat), IBM X-Force, and Cisco Talos. The primary tool output is a timestamped HTML table style report.
 
 ## Changelog
+
+- 25 February 2025
+    + Updated Bluecoat check with SeleniumBase implementation to bypass Cloudflare turnstile
+    + Updated CISCO Talos check with SeleniumBase implementation to bypass antibot system
 
 - 07 January 2021
    + Fix Symantec Site Review (Bluecoat) reputation checking to bypass XSRF and additional POST parameter checks
